@@ -1,0 +1,29 @@
+# Dagster's own configuration (it lives in DAGSTER_HOME inside the container).
+
+# Run history, logs and schedules are kept in Postgres, so they survive restarts.
+storage:
+  postgres:
+    postgres_db:
+      hostname: postgres
+      port: 5432
+      db_name: dagster
+      username:
+        env: DAGSTER_PG_USER
+      password:
+        env: DAGSTER_PG_PASSWORD
+
+# Runs wait in a queue and execute one at a time, so two Spark jobs never compete for
+# memory on a laptop.
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 1
+
+# Each run is started as a separate process inside the daemon container.
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+telemetry:
+  enabled: false

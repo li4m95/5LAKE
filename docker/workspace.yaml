@@ -1,0 +1,5 @@
+# Tells Dagster where our code is: the `defs` object in mlops/orchestration.py.
+load_from:
+  - python_module:
+      module_name: mlops.orchestration
+      working_directory: /app

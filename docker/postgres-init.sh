@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<EOSQL
+CREATE USER mlflow WITH PASSWORD '${MLFLOW_DB_PASSWORD}';
+CREATE DATABASE mlflow OWNER mlflow;
+
+CREATE USER dagster WITH PASSWORD '${DAGSTER_DB_PASSWORD}';
+CREATE DATABASE dagster OWNER dagster;
+
+CREATE USER app WITH PASSWORD '${APP_DB_PASSWORD}';
+CREATE DATABASE monitoring OWNER app;
+
+CREATE USER grafana_reader WITH PASSWORD '${GRAFANA_DB_PASSWORD}';
+GRANT CONNECT ON DATABASE monitoring TO grafana_reader;
+EOSQL
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname monitoring <<EOSQL
+GRANT USAGE ON SCHEMA public TO grafana_reader;
+ALTER DEFAULT PRIVILEGES FOR ROLE app IN SCHEMA public GRANT SELECT ON TABLES TO grafana_reader;
+EOSQL

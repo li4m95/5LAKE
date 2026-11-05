@@ -1,0 +1,173 @@
+name: modern-mlops
+
+x-pipeline-image: &pipeline-image
+  build:
+    context: .
+    dockerfile: docker/pipeline.Dockerfile
+  image: modern-mlops-pipeline:local
+
+x-dagster: &dagster
+  <<: *pipeline-image
+  environment:
+    PROJECT_ROOT: /app
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    DATABASE_URL: postgresql://app:${APP_DB_PASSWORD:?set in .env}@postgres:5432/monitoring
+    DAGSTER_PG_USER: dagster
+    DAGSTER_PG_PASSWORD: ${DAGSTER_DB_PASSWORD:?set in .env}
+    SPARK_DRIVER_MEMORY: 1g # ample for this dataset (1,460 rows)
+    RIDGE_ALPHA: ${RIDGE_ALPHA:-1.0}
+  volumes:
+    - ./data:/app/data
+    - ./artifacts:/app/artifacts
+    - dagster-storage:/opt/dagster/home/storage
+  depends_on:
+    postgres:
+      condition: service_healthy
+    mlflow:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:?set in .env}
+      DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD:?set in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set in .env}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+  mlflow:
+    <<: *pipeline-image
+    command: >
+      mlflow server
+      --backend-store-uri postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD}@postgres:5432/mlflow
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+      --host 0.0.0.0
+      --port 5000
+      --workers 1
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: unless-stopped
+
+  dagster-webserver:
+    <<: *dagster
+    command: ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-w", "/app/workspace.yaml"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  dagster-daemon:
+    <<: *dagster
+    command: ["dagster-daemon", "run", "-w", "/app/workspace.yaml"]
+    deploy:
+      resources:
+        limits:
+          memory: 3g # training runs (Spark) execute inside the daemon container
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: modern-mlops-api:local
+    environment:
+      PROJECT_ROOT: /app
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_HTTP_REQUEST_MAX_RETRIES: "2"
+      MLFLOW_HTTP_REQUEST_TIMEOUT: "10"
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD:?set in .env}@postgres:5432/monitoring
+      API_KEYS: ${API_KEYS:?set in .env}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?set in .env}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  mlflow-artifacts:
+  dagster-storage:
+  prometheus-data:
+  grafana-data:
