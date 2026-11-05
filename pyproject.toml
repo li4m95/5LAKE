@@ -1,0 +1,65 @@
+[project]
+name = "modern-mlops"
+version = "0.2.0"
+description = "Local-first, production-style MLOps student project"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "pydantic>=2.6,<3",
+    "pandas>=2.1,<3",
+    "numpy>=1.26,<3",
+    "scikit-learn>=1.4,<1.7",
+    "mlflow>=2.12,<3",
+    # MLflow 2.x's server imports FallbackAsyncAdaptedQueuePool, which SQLAlchemy 2.1 removed.
+    # MLflow only declares sqlalchemy<3, so the cap has to be set here.
+    "sqlalchemy>=2.0,<2.1",
+    "psycopg[binary,pool]>=3.1,<4",
+    "prometheus-client>=0.20,<1",
+]
+
+[project.scripts]
+mlops-model = "mlops.registry:main"
+
+[dependency-groups]
+pipeline = [
+    "pyspark>=3.5.1,<3.6",
+    "pyarrow>=14,<20",
+    "feast>=0.40,<0.50",
+    "evidently>=0.7,<0.8",
+    "dagster>=1.8,<2",
+    "dagster-webserver>=1.8,<2",
+    "dagster-postgres>=0.24,<1",
+    # Driver for the MLflow server's Postgres backend. MLflow is tested with psycopg2; with
+    # psycopg 3 some of its queries fail ("operator does not exist: integer = character varying").
+    "psycopg2-binary>=2.9,<3",
+]
+dev = [
+    "pytest>=8,<9",
+    "httpx>=0.27,<1",
+    "ruff>=0.6,<1",
+    "locust>=2.20,<3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mlops"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mlops"]
