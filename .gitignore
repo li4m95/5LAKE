@@ -8,5 +8,6 @@ data/
 artifacts/
 feature_repo/data/
 requirements-audit.txt
+backups/
 .DS_Store
 .vscode/

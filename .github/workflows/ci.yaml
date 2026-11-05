@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - run: uv python install 3.11
+      - run: uv sync --frozen --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+      - name: Audit dependencies for known vulnerabilities
+        run: |
+          uv export --frozen --all-groups --no-hashes --no-emit-project \
+            --format requirements-txt > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --disable-pip --no-deps
+
+  images:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -f docker/api.Dockerfile -t modern-mlops-api:ci .
+          docker build -f docker/pipeline.Dockerfile -t modern-mlops-pipeline:ci .
+
+      - name: Scan the API image (fails on fixable HIGH/CRITICAL issues)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --ignore-unfixed \
+            --exit-code 1 modern-mlops-api:ci
+
+      - name: Scan the pipeline image (report only)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --ignore-unfixed \
+            --exit-code 0 modern-mlops-pipeline:ci

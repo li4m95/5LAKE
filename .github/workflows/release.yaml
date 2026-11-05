@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          for target in api pipeline; do
+            image="ghcr.io/${GITHUB_REPOSITORY,,}-${target}:${GITHUB_REF_NAME}"
+            docker build -f "docker/${target}.Dockerfile" -t "$image" .
+            docker push "$image"
+          done

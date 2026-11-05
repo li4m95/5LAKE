@@ -148,6 +148,8 @@ http://localhost:9090/alerts.
 src/mlops/        code : settings, validation, data, features, evaluation, train, registry,
                   db, monitoring, orchestration (Dagster), api (FastAPI), logging_config
 tests/            tests unitaires (pytest)
+docs/             RUNBOOK.md (exploitation, alertes, sauvegardes), EXERCICES.md (5 exercices de sécurité)
+.github/          CI (ci.yaml), publication d'images (release.yaml), Dependabot
 scripts/          smoke_test.py, replay_holdout.py
 loadtest/         locustfile.py
 docker/           Dockerfiles, configuration Dagster, script d'initialisation de Postgres
