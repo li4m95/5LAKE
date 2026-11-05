@@ -24,7 +24,7 @@ mlops-model = "mlops.registry:main"
 
 [dependency-groups]
 pipeline = [
-    "pyspark>=3.5.1,<3.6",
+    "pyspark>=3.5.1,<4.4",
     "pyarrow>=14,<20",
     "feast>=0.40,<0.50",
     "evidently>=0.7,<0.8",
