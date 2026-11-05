@@ -14,7 +14,7 @@ dependencies = [
     "mlflow>=2.12,<3",
     # MLflow 2.x's server imports FallbackAsyncAdaptedQueuePool, which SQLAlchemy 2.1 removed.
     # MLflow only declares sqlalchemy<3, so the cap has to be set here.
-    "sqlalchemy>=2.0,<2.1",
+    "sqlalchemy>=2.0,<2.2",
     "psycopg[binary,pool]>=3.1,<4",
     "prometheus-client>=0.20,<1",
 ]
